@@ -40,17 +40,17 @@ st.markdown(
     """
     <style>
     .stApp {
-        background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
-        color: #0f172a;
+        background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+        color: #1f2937;
     }
     .stButton>button {
-        background: linear-gradient(90deg, #0f766e 0%, #2563eb 100%);
+        background: linear-gradient(90deg, #2563eb 0%, #0ea5e9 100%);
         color: white;
         border: none;
         border-radius: 1.25rem;
         height: 3.2rem;
         font-weight: 700;
-        box-shadow: 0 14px 34px rgba(37, 99, 235, 0.16);
+        box-shadow: 0 14px 34px rgba(14, 165, 233, 0.18);
         transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
         width: 100%;
         letter-spacing: 0.02em;
@@ -58,21 +58,21 @@ st.markdown(
     }
     .stButton>button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 18px 42px rgba(37, 99, 235, 0.2);
-        filter: brightness(1.05);
+        box-shadow: 0 18px 42px rgba(14, 165, 233, 0.22);
+        filter: brightness(1.08);
     }
     .stButton>button:focus {
         outline: none;
-        box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.22);
+        box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.24);
     }
     .stTextInput>div>div>input,
     .stTextArea>div>div>textarea,
     .stNumberInput>div>div>input,
     .stFileUploader>div {
         border-radius: 1rem;
-        border: 1px solid #cbd5e1;
-        background: white;
-        box-shadow: inset 0 1px 4px rgba(15, 23, 42, 0.06);
+        border: 1px solid #dbeafe;
+        background: #f8fafc;
+        box-shadow: inset 0 1px 4px rgba(15, 23, 42, 0.05);
     }
     .stFileUploader>div,
     .stSidebar>div,
@@ -81,7 +81,7 @@ st.markdown(
     .stTextInput,
     .stTextArea,
     .stNumberInput {
-        background: rgba(255, 255, 255, 0.98);
+        background: #f8fafc;
         border-radius: 1rem;
         padding: 1rem;
         border: none;
@@ -90,7 +90,7 @@ st.markdown(
     .stSidebar .stTextInput,
     .stSidebar .stTextArea,
     .stSidebar .stNumberInput {
-        background: rgba(248, 250, 252, 0.98);
+        background: #eef2ff;
     }
     .stAlert,
     .stMarkdown p,
@@ -105,10 +105,10 @@ st.markdown(
         color: #0f172a;
     }
     .stMetric {
-        background: linear-gradient(180deg, #e0f2fe 0%, #f8fafc 100%);
+        background: linear-gradient(180deg, #dbeafe 0%, #eff6ff 100%);
         border-radius: 1rem;
         padding: 1.1rem;
-        border: 1px solid #bae6fd;
+        border: 1px solid #bfdbfe;
     }
     .stColumn>div {
         padding-bottom: 1.15rem;
