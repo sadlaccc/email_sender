@@ -34,7 +34,7 @@ with st.sidebar:
         "Never share credentials publicly."
     )
 
-uploaded_file = st.file_uploader("Upload recipients CSV", type=["csv", "txt"])
+uploaded_file = st.file_uploader("Upload recipients CSV or Excel", type=["csv", "txt", "xls", "xlsx"])
 
 st.markdown(
     """
@@ -126,11 +126,18 @@ st.markdown(
 recipients_df = None
 if uploaded_file is not None:
     try:
+        file_ext = uploaded_file.name.lower().split(".")[-1]
         raw_data = uploaded_file.read()
-        try:
-            recipients_df = pd.read_csv(io.StringIO(raw_data.decode("utf-8")))
-        except UnicodeDecodeError:
-            recipients_df = pd.read_csv(io.StringIO(raw_data.decode("latin-1")))
+
+        if file_ext in ["csv", "txt"]:
+            try:
+                recipients_df = pd.read_csv(io.StringIO(raw_data.decode("utf-8")))
+            except UnicodeDecodeError:
+                recipients_df = pd.read_csv(io.StringIO(raw_data.decode("latin-1")))
+        elif file_ext in ["xls", "xlsx"]:
+            recipients_df = pd.read_excel(io.BytesIO(raw_data))
+        else:
+            st.error("Unsupported file type. Upload a CSV or Excel file.")
     except Exception as exc:
         st.error(f"Could not read the uploaded file: {exc}")
 
