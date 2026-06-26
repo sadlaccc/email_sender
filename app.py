@@ -39,11 +39,85 @@ uploaded_file = st.file_uploader("Upload recipients CSV", type=["csv", "txt"])
 st.markdown(
     """
     <style>
-    .stApp {background: #f5f7ff;}
-    .stButton>button {background: linear-gradient(90deg, #4f46e5 0%, #2563eb 100%); color: white; border: none; border-radius: 0.85rem; height: 3rem; font-weight: 600;}
-    .stTextInput>div>div>input, .stTextArea>div>div>textarea, .stNumberInput>div>div>input {border-radius: 0.75rem;}
-    .stFileUploader, .stMarkdown, .stExpander {background: white; border-radius: 1rem; padding: 1rem;}
-    .stAlert, .stMarkdown p {font-size: 0.95rem;}
+    .stApp {
+        background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
+        color: #0f172a;
+    }
+    .stButton>button {
+        background: linear-gradient(90deg, #0f766e 0%, #2563eb 100%);
+        color: white;
+        border: none;
+        border-radius: 1.25rem;
+        height: 3.2rem;
+        font-weight: 700;
+        box-shadow: 0 14px 34px rgba(37, 99, 235, 0.16);
+        transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+        width: 100%;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+    }
+    .stButton>button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 42px rgba(37, 99, 235, 0.2);
+        filter: brightness(1.05);
+    }
+    .stButton>button:focus {
+        outline: none;
+        box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.22);
+    }
+    .stTextInput>div>div>input,
+    .stTextArea>div>div>textarea,
+    .stNumberInput>div>div>input,
+    .stFileUploader>div {
+        border-radius: 1rem;
+        border: 1px solid #cbd5e1;
+        background: white;
+        box-shadow: inset 0 1px 4px rgba(15, 23, 42, 0.06);
+    }
+    .stFileUploader>div,
+    .stSidebar>div,
+    .stMarkdown,
+    .stExpander,
+    .stTextInput,
+    .stTextArea,
+    .stNumberInput {
+        background: rgba(255, 255, 255, 0.98);
+        border-radius: 1rem;
+        padding: 1rem;
+        border: none;
+    }
+    .stSidebar .stMarkdown,
+    .stSidebar .stTextInput,
+    .stSidebar .stTextArea,
+    .stSidebar .stNumberInput {
+        background: rgba(248, 250, 252, 0.98);
+    }
+    .stAlert,
+    .stMarkdown p,
+    label {
+        font-size: 0.97rem;
+        color: #334155;
+    }
+    .stMarkdown h1,
+    .stMarkdown h2,
+    .stMarkdown h3,
+    .stMarkdown h4 {
+        color: #0f172a;
+    }
+    .stMetric {
+        background: linear-gradient(180deg, #e0f2fe 0%, #f8fafc 100%);
+        border-radius: 1rem;
+        padding: 1.1rem;
+        border: 1px solid #bae6fd;
+    }
+    .stColumn>div {
+        padding-bottom: 1.15rem;
+    }
+    .reportview-container .main .block-container {
+        padding-top: 1.4rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -82,7 +156,13 @@ with main_col:
         if not openai_available:
             st.warning("Install the `openai` package to enable AI email generation.")
         else:
-            if st.button("Generate AI Email Draft"):
+            ai_action_col1, ai_action_col2 = st.columns([1, 1])
+            with ai_action_col1:
+                generate_draft = st.button("Generate Draft")
+            with ai_action_col2:
+                clear_ai = st.button("Reset Draft")
+
+            if generate_draft:
                 if not (openai_api_key or os.getenv("OPENAI_API_KEY")):
                     st.error("Enter your OpenAI API key in the sidebar or set OPENAI_API_KEY.")
                 elif not subject.strip():
@@ -113,9 +193,21 @@ with main_col:
                         st.success("AI-generated email draft inserted into the body field.")
                     except Exception as ai_error:
                         st.error(f"AI generation failed: {ai_error}")
+            elif clear_ai:
+                st.session_state.body = ""
 
+    st.markdown("### Email Content")
     body = st.text_area("Email Body", value=st.session_state.body, key="body", height=250)
-    submit_pressed = st.button("Submit")
+    st.markdown("---")
+    action_col1, action_col2 = st.columns([1, 1])
+    with action_col1:
+        submit_pressed = st.button("Send Emails")
+    with action_col2:
+        clear_pressed = st.button("Clear Body")
+
+    if clear_pressed:
+        st.session_state.body = ""
+        st.experimental_rerun()
 
     if submit_pressed:
         if recipients_df is None:
