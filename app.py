@@ -10,14 +10,12 @@ import streamlit as st
 
 st.set_page_config(page_title="Bulk Email Sender", page_icon="✉️", layout="wide")
 
-# ====================== HEADER ======================
 st.title("✉️ Bulk Email Sender")
-st.markdown("**Professional • Reliable • Simple**")
+st.markdown("**Professional Bulk Email Tool** — Now with better delivery diagnostics")
 
 # ====================== SIDEBAR ======================
 with st.sidebar:
     st.header("SMTP Configuration")
-    
     smtp_server = st.text_input("SMTP Server", value="smtp.intellinksea.com", key="smtp_server")
     smtp_port = st.number_input("Port", value=587, min_value=1, max_value=65535, key="smtp_port")
     
@@ -25,16 +23,14 @@ with st.sidebar:
     smtp_password = st.text_input("Password", type="password", key="smtp_password")
 
     st.markdown("---")
-    st.info("**Tip**: Start with **Dry Run** enabled")
+    test_email = st.text_input("Test Email Address (optional)", placeholder="yourpersonal@gmail.com")
 
 # ====================== MAIN LAYOUT ======================
-col_left, col_right = st.columns([2, 1])
+col1, col2 = st.columns([2, 1])
 
-# ====================== LEFT COLUMN - MAIN WORK AREA ======================
-with col_left:
-    # Recipients Section
-    st.subheader("📤 1. Upload Recipients")
-    uploaded_file = st.file_uploader("CSV or Excel file", type=["csv", "xlsx", "xls"], key="file_upload")
+with col1:
+    st.subheader("📤 1. Recipients")
+    uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx", "xls"])
 
     recipients_df: Optional[pd.DataFrame] = None
 
@@ -47,66 +43,53 @@ with col_left:
 
             recipients_df.columns = [str(col).strip().lower() for col in recipients_df.columns]
 
-            st.success(f"✅ Loaded **{len(recipients_df)}** records")
-
-            # Email Column Selection
             email_col = st.selectbox("Select Email Column", recipients_df.columns)
-            if st.button("✅ Confirm Email Column", type="primary", use_container_width=True):
+            if st.button("✅ Confirm Email Column", type="primary"):
                 recipients_df = recipients_df.rename(columns={email_col: "email"})
-                st.success(f"Email column set to: **{email_col}**")
+                st.success("Email column confirmed")
                 st.dataframe(recipients_df.head(6), use_container_width=True)
-
         except Exception as e:
             st.error(f"File Error: {e}")
 
-    # Email Content Section
     st.markdown("---")
     st.subheader("✉️ 2. Email Content")
-
-    subject = st.text_input("Subject", placeholder="Quarterly Business Update - Q2 2026", key="subject")
-
+    subject = st.text_input("Subject", "Important Update from Intellinksea")
+    
     body = st.text_area(
-        "Email Body — Use {name} for personalization", 
-        value=st.session_state.get("body", "Hello {name},\n\nPlease find the latest update attached.\n\nBest regards,\nTeam Intellinksea"),
-        height=280,
-        key="body"
+        "Email Body (use {name} for personalization)", 
+        height=250,
+        value="Hello {name},\n\nThis is a test message.\n\nBest regards,\nTeam"
     )
 
-    # Send Section
     st.markdown("---")
-    st.subheader("🚀 3. Send Campaign")
+    st.subheader("🚀 3. Send Settings")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        dry_run = st.checkbox("🔍 Dry Run (Don't actually send)", value=True)
+    with col_b:
+        delay = st.slider("Delay (seconds)", 0, 3, 1)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        dry_run = st.checkbox("Dry Run (Preview Only)", value=True)
-    with c2:
-        delay = st.slider("Delay between emails (seconds)", 0, 3, 1)
-
-    if st.button("🚀 SEND EMAILS NOW", type="primary", use_container_width=True):
+    if st.button("🚀 SEND EMAILS", type="primary", use_container_width=True):
         if not smtp_user or not smtp_password:
-            st.error("❌ Please enter SMTP credentials in the sidebar.")
+            st.error("Please fill SMTP credentials in sidebar")
         elif recipients_df is None or "email" not in recipients_df.columns:
-            st.error("❌ Please upload file and confirm email column.")
+            st.error("Please upload recipients and confirm email column")
         elif not subject or not body:
-            st.error("❌ Subject and Body are required.")
+            st.error("Subject and body required")
         else:
             valid_df = recipients_df[recipients_df["email"].astype(str).str.contains("@", na=False)].copy()
 
-            if len(valid_df) == 0:
-                st.error("No valid email addresses found.")
-                st.stop()
-
-            # Progress
             progress_bar = st.progress(0)
             status_text = st.empty()
-
+            
             sent_count = 0
-            failed: List[Tuple[str, str]] = []
+            failed = []
 
             try:
                 with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as smtp:
                     smtp.ehlo()
-                    if smtp_port in (587, 25):
+                    if smtp_port == 587:
                         smtp.starttls()
                         smtp.ehlo()
                     smtp.login(smtp_user, smtp_password)
@@ -115,76 +98,81 @@ with col_left:
                         recipient = str(row["email"]).strip()
                         name = str(row.get("name", "")).strip() or "there"
 
-                        personalized = body.replace("{name}", name)
+                        personalized_body = body.replace("{name}", name)
 
                         msg = EmailMessage()
-                        msg["From"] = smtp_user
+                        msg["From"] = f"Intellinksea Team <{smtp_user}>"
                         msg["To"] = recipient
                         msg["Subject"] = subject
-                        msg.set_content(personalized)
+                        msg.set_content(personalized_body)
 
                         try:
                             if not dry_run:
                                 smtp.send_message(msg)
                             sent_count += 1
+                            status = "✅ Sent"
                         except Exception as e:
                             failed.append((recipient, str(e)))
+                            status = "❌ Failed"
 
                         progress_bar.progress((idx + 1) / len(valid_df))
-                        status_text.text(f"Sending {idx+1}/{len(valid_df)} → {recipient}")
+                        status_text.text(f"{status} → {recipient}")
 
                         if delay > 0:
                             time.sleep(delay)
 
             except Exception as e:
-                st.error(f"SMTP Error: {e}")
+                st.error(f"Connection Error: {e}")
 
-            # ====================== FINAL NOTIFICATION ======================
+            # ====================== FINAL RESULT ======================
             st.success(f"""
-            🎉 **Campaign Completed Successfully!**
+            **Campaign Finished!**
 
-            **Sent**: {sent_count} emails  
-            **Total Recipients**: {len(valid_df)}  
-            **Failed**: {len(failed)} emails
+            ✅ Successfully Sent: **{sent_count}** emails  
+            ⚠️ Failed: **{len(failed)}** emails
             """)
 
+            if dry_run:
+                st.warning("🔍 **Dry Run Mode** was enabled — No emails were actually sent.")
+
             if failed:
-                st.warning("Some emails failed to send.")
-                with st.expander("📋 View Failed Emails"):
-                    failed_df = pd.DataFrame(failed, columns=["Email", "Error"])
-                    st.dataframe(failed_df, use_container_width=True)
-                    st.download_button(
-                        "Download Failed Emails as CSV",
-                        failed_df.to_csv(index=False),
-                        file_name="failed_emails.csv",
-                        mime="text/csv"
-                    )
+                st.error("Some emails failed")
+                failed_df = pd.DataFrame(failed, columns=["Email", "Reason"])
+                st.dataframe(failed_df, use_container_width=True)
 
-            st.balloons()
+            # Test Email Option
+            if st.button("📧 Send Test Email to Yourself"):
+                if test_email:
+                    try:
+                        with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as smtp:
+                            smtp.ehlo()
+                            if smtp_port == 587:
+                                smtp.starttls()
+                                smtp.ehlo()
+                            smtp.login(smtp_user, smtp_password)
 
-# ====================== RIGHT COLUMN - SUMMARY ======================
-with col_right:
+                            msg = EmailMessage()
+                            msg["From"] = f"Intellinksea Team <{smtp_user}>"
+                            msg["To"] = test_email
+                            msg["Subject"] = "Test Email - Bulk Sender"
+                            msg.set_content("This is a test email from the Bulk Email Sender app.")
+                            smtp.send_message(msg)
+                        st.success(f"Test email sent to {test_email}")
+                    except Exception as e:
+                        st.error(f"Test email failed: {e}")
+                else:
+                    st.warning("Enter a test email in the sidebar")
+
+with col2:
     st.subheader("Campaign Summary")
-    
     if recipients_df is not None and "email" in recipients_df.columns:
-        total = len(recipients_df)
-        valid = len(recipients_df[recipients_df["email"].astype(str).str.contains("@", na=False)])
-        
-        st.metric("Total Records", total)
-        st.metric("Valid Emails", valid, delta=valid - total)
-        
-        st.markdown("### Preview")
-        st.dataframe(recipients_df[["email"]].head(8), use_container_width=True)
-    else:
-        st.info("Upload recipient file to see summary")
-
-    st.markdown("---")
-    st.markdown("### Instructions")
-    st.markdown("""
-    1. Upload your recipient list  
-    2. Confirm the email column  
-    3. Write your message  
-    4. Click **Send Emails**
+        st.metric("Total Recipients", len(recipients_df))
+        st.metric("Valid Emails", len(recipients_df[recipients_df["email"].astype(str).str.contains("@")]))
+    
+    st.info("""
+    **Why emails may not be delivered:**
+    - Dry Run enabled
+    - Emails going to Spam folder
+    - Sender reputation issues
+    - Check your inbox / spam folder
     """)
-
-    st.caption("Built for Intellinksea")
