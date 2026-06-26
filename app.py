@@ -23,9 +23,7 @@ st.set_page_config(
 )
 
 st.title("✉️ Bulk Email Sender")
-st.markdown(
-    "Upload your recipient list, compose your message, and send **personalized** bulk emails safely."
-)
+st.markdown("Upload your recipient list, compose your message, and send personalized bulk emails.")
 
 # ------------------- Sidebar -------------------
 with st.sidebar:
@@ -43,15 +41,15 @@ with st.sidebar:
     st.info(
         "🔒 **Security Note**\n\n"
         "• Use Gmail App Passwords\n"
-        "• Never share this app publicly with credentials\n"
-        "• Consider rate limits on your SMTP provider"
+        "• Never share this app publicly\n"
+        "• Respect sending limits"
     )
 
 # ------------------- File Upload -------------------
 uploaded_file = st.file_uploader(
-    "Upload recipients (CSV or Excel)", 
+    "Upload recipients (CSV preferred)", 
     type=["csv", "txt", "xls", "xlsx"],
-    help="Must contain an 'email' column. 'name' column is optional for personalization."
+    help="CSV is most reliable. Excel files require 'openpyxl' package."
 )
 
 recipients_df: Optional[pd.DataFrame] = None
@@ -66,17 +64,32 @@ if uploaded_file:
                 recipients_df = pd.read_csv(io.StringIO(raw_data.decode("utf-8")))
             except UnicodeDecodeError:
                 recipients_df = pd.read_csv(io.StringIO(raw_data.decode("latin-1")))
-        else:  # Excel
-            recipients_df = pd.read_excel(io.BytesIO(raw_data))
+            
+        elif file_ext in ["xls", "xlsx"]:
+            try:
+                recipients_df = pd.read_excel(io.BytesIO(raw_data))
+            except ImportError as e:
+                if "openpyxl" in str(e).lower():
+                    st.error("❌ **openpyxl is required for Excel files**")
+                    st.info("Run this command in your terminal:\n\n`pip install openpyxl`")
+                    st.stop()
+                else:
+                    raise
+            except Exception as e:
+                st.error(f"Failed to read Excel file: {e}")
+                st.stop()
+        else:
+            st.error("Unsupported file type.")
+            st.stop()
 
-        # Basic cleaning
+        # Normalize columns
         recipients_df.columns = [col.strip().lower() for col in recipients_df.columns]
-        
+
         if "email" not in recipients_df.columns:
-            st.error("❌ File must contain an **email** column.")
+            st.error("❌ The file must contain an **email** column.")
             recipients_df = None
         else:
-            st.success(f"✅ Loaded {len(recipients_df)} recipients")
+            st.success(f"✅ Loaded **{len(recipients_df)}** recipients successfully")
 
     except Exception as e:
         st.error(f"Failed to read file: {e}")
@@ -93,21 +106,20 @@ with col1:
         st.markdown("### AI Email Generator")
         ai_prompt = st.text_area(
             "AI Instructions",
-            value="Write a warm, professional, and concise email introducing our product/service. Include a clear call-to-action.",
+            value="Write a warm, professional, and concise email introducing our product/service with a clear call-to-action.",
             height=120
         )
 
         if st.button("Generate Draft with AI", type="primary"):
-            if not openai_api_key and not os.getenv("OPENAI_API_KEY"):
+            if not (openai_api_key or os.getenv("OPENAI_API_KEY")):
                 st.error("Please provide an OpenAI API key.")
             elif not subject.strip():
                 st.error("Please enter a subject first.")
             else:
                 try:
                     client = OpenAI(api_key=openai_api_key or os.getenv("OPENAI_API_KEY"))
-                    
                     response = client.chat.completions.create(
-                        model="gpt-4o-mini",  # or gpt-3.5-turbo
+                        model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": "You are an expert email copywriter."},
                             {"role": "user", "content": f"""Subject: {subject}
@@ -118,14 +130,12 @@ Generate only the email body. Use {{name}} for personalization."""}
                         temperature=0.7,
                         max_tokens=500
                     )
-                    
                     generated_body = response.choices[0].message.content.strip()
-                    if "{name}" not in generated_body.lower():
+                    if "{name}" not in generated_body:
                         generated_body = f"Hello {{name}},\n\n{generated_body}"
                     
                     st.session_state.body = generated_body
                     st.success("✅ AI draft generated!")
-                    
                 except Exception as e:
                     st.error(f"AI generation failed: {e}")
 
@@ -140,7 +150,6 @@ Generate only the email body. Use {{name}} for personalization."""}
         key="body"
     )
 
-    # Options
     col_a, col_b, col_c = st.columns(3)
     with col_a:
         dry_run = st.checkbox("Dry Run (preview only)", value=True)
@@ -149,7 +158,7 @@ Generate only the email body. Use {{name}} for personalization."""}
     with col_c:
         html_mode = st.checkbox("Send as HTML", value=False)
 
-    # ------------------- Send Button -------------------
+    # Send Button
     if st.button("🚀 Send Emails", type="primary", use_container_width=True):
         if recipients_df is None:
             st.error("Please upload a recipient file.")
@@ -162,11 +171,11 @@ Generate only the email body. Use {{name}} for personalization."""}
         elif not body.strip():
             st.error("Email body is required.")
         else:
-            # Validation
-            valid_emails = recipients_df["email"].astype(str).str.strip().str.match(r"[^@]+@[^@]+\.[^@]+")
-            valid_df = recipients_df[valid_emails].copy()
+            # Basic email validation
+            valid_mask = recipients_df["email"].astype(str).str.strip().str.match(r"[^@]+@[^@]+\.[^@]+")
+            valid_df = recipients_df[valid_mask].copy().reset_index(drop=True)
             
-            st.info(f"Sending to {len(valid_df)} valid emails...")
+            st.info(f"Preparing to send to **{len(valid_df)}** valid emails...")
 
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -177,7 +186,7 @@ Generate only the email body. Use {{name}} for personalization."""}
             try:
                 with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as smtp:
                     smtp.ehlo()
-                    if smtp_port == 587:
+                    if smtp_port in (587, 25):
                         smtp.starttls()
                         smtp.ehlo()
                     smtp.login(smtp_user, smtp_password)
@@ -193,7 +202,7 @@ Generate only the email body. Use {{name}} for personalization."""}
                         msg["To"] = recipient
                         msg["Subject"] = subject
                         
-                        if html_mode:
+                        if html_mode and "<html" in personalized_body.lower():
                             msg.add_alternative(personalized_body, subtype="html")
                         else:
                             msg.set_content(personalized_body)
@@ -205,9 +214,7 @@ Generate only the email body. Use {{name}} for personalization."""}
                         except Exception as e:
                             failed.append((recipient, str(e)))
 
-                        # Progress
-                        progress = (idx + 1) / len(valid_df)
-                        progress_bar.progress(progress)
+                        progress_bar.progress((idx + 1) / len(valid_df))
                         status_text.text(f"Sending {idx+1}/{len(valid_df)} → {recipient}")
 
                         if delay > 0:
@@ -216,32 +223,29 @@ Generate only the email body. Use {{name}} for personalization."""}
             except Exception as e:
                 st.error(f"SMTP Connection Error: {e}")
 
-            # Results
             st.success(f"✅ Successfully sent: **{sent_count}** / **{len(recipients_df)}**")
 
             if failed:
-                st.warning(f"⚠️ Failed: {len(failed)} emails")
-                with st.expander("View Failures"):
-                    for email, error in failed:
-                        st.error(f"{email}: {error}")
+                st.warning(f"⚠️ Failed to send {len(failed)} emails")
+                with st.expander("View Failed Emails"):
+                    for email, error in failed[:20]:  # limit display
+                        st.write(f"**{email}**: {error}")
+                    if len(failed) > 20:
+                        st.write(f"... and {len(failed)-20} more.")
 
 with col2:
-    st.markdown("### 📋 Preview")
-    if recipients_df is not None and len(recipients_df) > 0:
+    if recipients_df is not None:
         st.metric("Total Recipients", len(recipients_df))
-        
-        st.markdown("**First few recipients:**")
-        preview_df = recipients_df.head(5)[["email"] + (["name"] if "name" in recipients_df.columns else [])]
-        st.dataframe(preview_df, use_container_width=True)
+        st.dataframe(recipients_df.head(6), use_container_width=True)
 
     st.markdown("### 💡 Tips")
     st.markdown("""
-    - Use `{name}` anywhere in the body
-    - Gmail users: Generate an **App Password**
-    - Start with **Dry Run** enabled
-    - Respect your provider's sending limits
-    - Consider adding an unsubscribe link for compliance
+    - **CSV is recommended** (most reliable)
+    - For Excel: run `pip install openpyxl`
+    - Use `{name}` for personalization
+    - Enable **Dry Run** first
+    - Add delay to avoid rate limits
     """)
 
 if not uploaded_file:
-    st.info("👆 Upload your recipient list to get started.")
+    st.info("👆 Upload your recipient list (CSV or Excel) to begin.")
