@@ -8,46 +8,30 @@ from typing import List, Tuple, Optional
 import pandas as pd
 import streamlit as st
 
-try:
-    from openai import OpenAI
-    openai_available = True
-except ImportError:
-    openai_available = False
-
 st.set_page_config(page_title="Bulk Email Sender", page_icon="✉️", layout="wide")
 
-st.title("✉️ Bulk Email Sender - Any SMTP Provider")
+st.title("✉️ Bulk Email Sender")
+st.markdown(f"**SMTP Server:** `smtp.intellinksea.com`")
 
 # ================== SIDEBAR ==================
 with st.sidebar:
     st.header("SMTP Configuration")
     
-    provider = st.selectbox(
-        "Select Provider", 
-        ["Custom", "Gmail", "Outlook", "Yahoo", "Zoho"],
-        index=0
-    )
+    smtp_server = st.text_input("SMTP Server", value="smtp.intellinksea.com", key="smtp_server")
+    smtp_port = st.number_input("SMTP Port", value=587, min_value=1, max_value=65535, key="smtp_port")
     
-    presets = {
-        "Gmail": ("smtp.gmail.com", 587),
-        "Outlook": ("smtp.office365.com", 587),
-        "Yahoo": ("smtp.mail.yahoo.com", 587),
-        "Zoho": ("smtp.zoho.com", 587),
-    }
-    
-    default_server, default_port = presets.get(provider, ("smtp.yourdomain.com", 587))
+    smtp_user = st.text_input("Email Address / Username", placeholder="yourname@intellinksea.com", key="smtp_user")
+    smtp_password = st.text_input("Password", type="password", key="smtp_password")
 
-    smtp_server = st.text_input("SMTP Server", value=default_server, key="smtp_server")
-    smtp_port = st.number_input("Port", value=default_port, min_value=1, max_value=65535, key="smtp_port")
-    
-    smtp_user = st.text_input("Email Address", placeholder="you@yourdomain.com", key="smtp_user")
-    smtp_password = st.text_input("Password / App Password", type="password", key="smtp_password")
-
-    st.markdown("---")
-    st.info("**Tip**: Use App Password for Gmail")
+    st.info("""
+    **Important for intellinksea.com**
+    - Use your full email address as username
+    - Make sure your password is correct
+    - Port 587 (TLS) is recommended
+    """)
 
 # ================== FILE UPLOAD ==================
-uploaded_file = st.file_uploader("Upload recipients file (CSV or Excel)", type=["csv", "txt", "xls", "xlsx"], key="file_uploader")
+uploaded_file = st.file_uploader("Upload recipients file (CSV or Excel)", type=["csv", "txt", "xls", "xlsx"], key="file")
 
 recipients_df: Optional[pd.DataFrame] = None
 
@@ -58,10 +42,12 @@ if uploaded_file:
         else:
             recipients_df = pd.read_excel(uploaded_file)
 
+        # Normalize columns
         recipients_df.columns = [str(col).strip().lower() for col in recipients_df.columns]
 
         # Smart email column detection
-        email_col = next((col for col in recipients_df.columns if any(x in col for x in ["email", "mail", "to", "recipient"])), None)
+        email_col = next((col for col in recipients_df.columns 
+                         if any(x in col for x in ["email", "mail", "to", "recipient"])), None)
         
         if not email_col and len(recipients_df) > 0:
             for col in recipients_df.columns:
@@ -73,14 +59,15 @@ if uploaded_file:
             recipients_df = recipients_df.rename(columns={email_col: "email"})
             st.success(f"✅ Email column detected: **{email_col}**")
         else:
-            selected = st.selectbox("Select email column:", recipients_df.columns, key="col_select")
-            if st.button("Confirm Email Column"):
+            st.warning("Could not auto-detect email column.")
+            selected = st.selectbox("Select the email column:", recipients_df.columns, key="select_col")
+            if st.button("✅ Confirm Email Column"):
                 recipients_df = recipients_df.rename(columns={selected: "email"})
-                st.success(f"✅ Using **{selected}** as email column")
+                st.success(f"Using **{selected}** as email column")
                 st.rerun()
 
         st.success(f"✅ Loaded **{len(recipients_df)}** recipients")
-        st.dataframe(recipients_df.head(5), use_container_width=True)
+        st.dataframe(recipients_df.head(6), use_container_width=True)
 
     except Exception as e:
         st.error(f"File error: {e}")
@@ -89,38 +76,36 @@ if uploaded_file:
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    subject = st.text_input("📧 Email Subject", placeholder="Special Offer Just for You!", key="subject")
+    subject = st.text_input("📧 Email Subject", placeholder="Important Update", key="subject")
 
     if "body" not in st.session_state:
-        st.session_state.body = "Hello {name},\n\nThis is a personalized message.\n\nBest regards,"
+        st.session_state.body = "Hello {name},\n\nThis is a test email from Intellinksea.\n\nBest regards,"
 
     body = st.text_area("📝 Email Body (use {name} for personalization)", 
                        value=st.session_state.body, height=280, key="body")
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2, _ = st.columns(3)
     with c1:
-        dry_run = st.checkbox("🔍 Dry Run (Test Mode - No emails sent)", value=True, key="dry_run")
+        dry_run = st.checkbox("🔍 Dry Run (Test Mode)", value=True, key="dry_run")
     with c2:
-        delay = st.slider("Delay between emails (seconds)", 0, 5, 1, key="delay")
+        delay = st.slider("Delay between emails (sec)", 0, 5, 1, key="delay")
 
     if st.button("🚀 Send Emails", type="primary", use_container_width=True):
-        # Improved validation
-        user_email = st.session_state.get("smtp_user", "").strip()
-        user_pass = st.session_state.get("smtp_password", "").strip()
+        user = st.session_state.get("smtp_user", "").strip()
+        password = st.session_state.get("smtp_password", "").strip()
 
-        if not user_email or not user_pass:
-            st.error("❌ Email address and password are required.")
-            st.info("Make sure you filled both fields in the sidebar.")
+        if not user or not password:
+            st.error("❌ Please enter your Email Address and Password in the sidebar.")
         elif recipients_df is None or "email" not in recipients_df.columns:
-            st.error("❌ Please upload a file and configure the email column.")
+            st.error("❌ Please upload file and confirm email column.")
         elif not subject.strip() or not body.strip():
-            st.error("❌ Subject and email body are required.")
+            st.error("❌ Subject and Body are required.")
         else:
-            # DNS check
+            # DNS Check
             try:
                 socket.gethostbyname(smtp_server)
             except Exception:
-                st.error(f"❌ Cannot find server: **{smtp_server}**")
+                st.error(f"❌ Cannot resolve server: {smtp_server}")
                 st.stop()
 
             valid_df = recipients_df[recipients_df["email"].astype(str).str.contains("@", na=False)].copy()
@@ -137,7 +122,7 @@ with col1:
                     if smtp_port in (587, 25):
                         smtp.starttls()
                         smtp.ehlo()
-                    smtp.login(user_email, user_pass)
+                    smtp.login(user, password)
 
                     for idx, row in valid_df.iterrows():
                         recipient = str(row["email"]).strip()
@@ -146,7 +131,7 @@ with col1:
                         personalized = body.replace("{name}", name)
 
                         msg = EmailMessage()
-                        msg["From"] = user_email
+                        msg["From"] = user
                         msg["To"] = recipient
                         msg["Subject"] = subject
                         msg.set_content(personalized)
@@ -159,7 +144,7 @@ with col1:
                             failed.append((recipient, str(e)))
 
                         progress_bar.progress((idx + 1) / len(valid_df))
-                        status_text.text(f"Processing {idx+1}/{len(valid_df)} → {recipient}")
+                        status_text.text(f"→ {recipient}")
 
                         if delay > 0:
                             time.sleep(delay)
@@ -167,14 +152,12 @@ with col1:
             except Exception as e:
                 st.error(f"SMTP Error: {e}")
 
-            st.success(f"✅ Successfully sent: **{sent_count}** emails")
+            st.success(f"✅ Sent **{sent_count}** emails successfully!")
             if failed:
-                st.warning(f"⚠️ Failed: {len(failed)} emails")
-                with st.expander("View Failures"):
-                    for email, err in failed[:20]:
-                        st.write(f"{email}: {err}")
+                st.warning(f"⚠️ {len(failed)} emails failed")
+                with st.expander("Show Failures"):
+                    for email, err in failed:
+                        st.write(f"{email} → {err}")
 
 with col2:
-    st.info("**Always start with Dry Run enabled**")
-    if smtp_user:
-        st.success("✅ Credentials detected")
+    st.info("**Recommendation**: Keep Dry Run ON until you confirm everything works.")
