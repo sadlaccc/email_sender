@@ -11,26 +11,33 @@ import streamlit as st
 st.set_page_config(page_title="Bulk Email Sender", page_icon="✉️", layout="wide")
 
 st.title("✉️ Bulk Email Sender")
-st.markdown(f"**SMTP Server:** `smtp.intellinksea.com`")
+st.markdown("**Current Server:** `smtp.intellinksea.com`")
 
 # ================== SIDEBAR ==================
 with st.sidebar:
     st.header("SMTP Configuration")
     
-    smtp_server = st.text_input("SMTP Server", value="smtp.intellinksea.com", key="smtp_server")
-    smtp_port = st.number_input("SMTP Port", value=587, min_value=1, max_value=65535, key="smtp_port")
+    smtp_server = st.text_input(
+        "SMTP Server", 
+        value="smtp.intellinksea.com", 
+        key="smtp_server",
+        help="Try mail.intellinksea.com or contact your IT team if this fails"
+    )
     
-    smtp_user = st.text_input("Email Address / Username", placeholder="yourname@intellinksea.com", key="smtp_user")
+    smtp_port = st.number_input("Port", value=587, min_value=1, max_value=65535, key="smtp_port")
+    
+    smtp_user = st.text_input("Email Address", placeholder="you@intellinksea.com", key="smtp_user")
     smtp_password = st.text_input("Password", type="password", key="smtp_password")
 
-    st.info("""
-    **Important for intellinksea.com**
-    - Use your full email address as username
-    - Make sure your password is correct
-    - Port 587 (TLS) is recommended
+    st.markdown("---")
+    st.warning("""
+    **Troubleshooting "Cannot resolve server"**
+    1. Try changing server to: `mail.intellinksea.com`
+    2. Confirm the exact hostname with your IT / Email Admin
+    3. Are you running this app on the same network/VPN as your email server?
     """)
 
-# ================== FILE UPLOAD ==================
+# ================== FILE UPLOAD (unchanged) ==================
 uploaded_file = st.file_uploader("Upload recipients file (CSV or Excel)", type=["csv", "txt", "xls", "xlsx"], key="file")
 
 recipients_df: Optional[pd.DataFrame] = None
@@ -42,10 +49,8 @@ if uploaded_file:
         else:
             recipients_df = pd.read_excel(uploaded_file)
 
-        # Normalize columns
         recipients_df.columns = [str(col).strip().lower() for col in recipients_df.columns]
 
-        # Smart email column detection
         email_col = next((col for col in recipients_df.columns 
                          if any(x in col for x in ["email", "mail", "to", "recipient"])), None)
         
@@ -57,17 +62,15 @@ if uploaded_file:
 
         if email_col:
             recipients_df = recipients_df.rename(columns={email_col: "email"})
-            st.success(f"✅ Email column detected: **{email_col}**")
+            st.success(f"✅ Email column: **{email_col}**")
         else:
-            st.warning("Could not auto-detect email column.")
-            selected = st.selectbox("Select the email column:", recipients_df.columns, key="select_col")
-            if st.button("✅ Confirm Email Column"):
+            selected = st.selectbox("Select email column:", recipients_df.columns, key="col_select")
+            if st.button("Confirm Email Column"):
                 recipients_df = recipients_df.rename(columns={selected: "email"})
-                st.success(f"Using **{selected}** as email column")
                 st.rerun()
 
-        st.success(f"✅ Loaded **{len(recipients_df)}** recipients")
-        st.dataframe(recipients_df.head(6), use_container_width=True)
+        st.success(f"✅ Loaded {len(recipients_df)} recipients")
+        st.dataframe(recipients_df.head(5), use_container_width=True)
 
     except Exception as e:
         st.error(f"File error: {e}")
@@ -79,7 +82,7 @@ with col1:
     subject = st.text_input("📧 Email Subject", placeholder="Important Update", key="subject")
 
     if "body" not in st.session_state:
-        st.session_state.body = "Hello {name},\n\nThis is a test email from Intellinksea.\n\nBest regards,"
+        st.session_state.body = "Hello {name},\n\nThis is a message from Intellinksea.\n\nBest regards,"
 
     body = st.text_area("📝 Email Body (use {name} for personalization)", 
                        value=st.session_state.body, height=280, key="body")
@@ -87,27 +90,29 @@ with col1:
     c1, c2, _ = st.columns(3)
     with c1:
         dry_run = st.checkbox("🔍 Dry Run (Test Mode)", value=True, key="dry_run")
-    with c2:
-        delay = st.slider("Delay between emails (sec)", 0, 5, 1, key="delay")
 
     if st.button("🚀 Send Emails", type="primary", use_container_width=True):
         user = st.session_state.get("smtp_user", "").strip()
         password = st.session_state.get("smtp_password", "").strip()
+        server_host = st.session_state.get("smtp_server", "").strip()
 
         if not user or not password:
-            st.error("❌ Please enter your Email Address and Password in the sidebar.")
+            st.error("❌ Email and Password required in sidebar.")
+        elif not server_host:
+            st.error("SMTP Server is required.")
         elif recipients_df is None or "email" not in recipients_df.columns:
-            st.error("❌ Please upload file and confirm email column.")
-        elif not subject.strip() or not body.strip():
-            st.error("❌ Subject and Body are required.")
+            st.error("Please upload file and set email column.")
         else:
-            # DNS Check
+            # DNS Check with better message
             try:
-                socket.gethostbyname(smtp_server)
-            except Exception:
-                st.error(f"❌ Cannot resolve server: {smtp_server}")
+                socket.gethostbyname(server_host)
+                st.success(f"✅ Server {server_host} resolved successfully")
+            except Exception as dns_err:
+                st.error(f"❌ Cannot resolve server: **{server_host}**")
+                st.info("Try `mail.intellinksea.com` or ask your IT team for the correct SMTP hostname.")
                 st.stop()
 
+            # ... rest of sending logic (same as before)
             valid_df = recipients_df[recipients_df["email"].astype(str).str.contains("@", na=False)].copy()
 
             progress_bar = st.progress(0)
@@ -117,7 +122,7 @@ with col1:
             failed = []
 
             try:
-                with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as smtp:
+                with smtplib.SMTP(server_host, smtp_port, timeout=30) as smtp:
                     smtp.ehlo()
                     if smtp_port in (587, 25):
                         smtp.starttls()
@@ -127,7 +132,6 @@ with col1:
                     for idx, row in valid_df.iterrows():
                         recipient = str(row["email"]).strip()
                         name = str(row.get("name", "")).strip() or "there"
-
                         personalized = body.replace("{name}", name)
 
                         msg = EmailMessage()
@@ -144,20 +148,17 @@ with col1:
                             failed.append((recipient, str(e)))
 
                         progress_bar.progress((idx + 1) / len(valid_df))
-                        status_text.text(f"→ {recipient}")
+                        status_text.text(f"Processing {idx+1}/{len(valid_df)}")
 
-                        if delay > 0:
-                            time.sleep(delay)
+                        if st.session_state.get("delay", 1) > 0:
+                            time.sleep(st.session_state.get("delay", 1))
 
             except Exception as e:
                 st.error(f"SMTP Error: {e}")
 
-            st.success(f"✅ Sent **{sent_count}** emails successfully!")
+            st.success(f"✅ Sent {sent_count} emails")
             if failed:
-                st.warning(f"⚠️ {len(failed)} emails failed")
-                with st.expander("Show Failures"):
-                    for email, err in failed:
-                        st.write(f"{email} → {err}")
+                st.warning(f"Failed: {len(failed)}")
 
 with col2:
-    st.info("**Recommendation**: Keep Dry Run ON until you confirm everything works.")
+    st.info("**Try these alternatives if it still fails:**\n- `mail.intellinksea.com`\n- `smtp.intellinksea.co.ke`")
