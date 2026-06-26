@@ -22,57 +22,97 @@ st.markdown("Upload your recipient list and send personalized bulk emails.")
 # ------------------- Sidebar -------------------
 with st.sidebar:
     st.header("SMTP Settings")
-    smtp_server = st.text_input("SMTP Server", value="smtp.gmail.com", help="For Gmail: smtp.gmail.com")
+    smtp_server = st.text_input("SMTP Server", value="smtp.gmail.com")
     smtp_port = st.number_input("SMTP Port", value=587, min_value=1, max_value=65535)
-    
-    smtp_user = st.text_input("SMTP Username / Email", help="Your full Gmail address")
-    smtp_password = st.text_input("SMTP Password / App Password", type="password")
+    smtp_user = st.text_input("SMTP Username / Email")
+    smtp_password = st.text_input("App Password", type="password")
 
     st.markdown("---")
-    st.warning("""
-    **Gmail Users Important**
-    - Do **NOT** use your normal Gmail password
-    - Use an **App Password** instead
-    - See instructions below
-    """)
-
-    st.markdown("### How to Generate App Password")
+    st.header("Gmail Help")
     st.markdown("""
-    1. Enable 2-Step Verification in your Google Account
-    2. Go to [App passwords](https://myaccount.google.com/apppasswords)
-    3. Select **Mail** → **Other**
-    4. Generate and copy the 16-character password
+    Use **App Password** (not regular password).  
+    See instructions in previous messages.
     """)
-
-    st.markdown("---")
-    st.header("AI Assistance")
-    openai_api_key = st.text_input("OpenAI API Key", type="password")
-
-# File upload and rest of the code remains the same as previous version...
 
 # ------------------- File Upload -------------------
-uploaded_file = st.file_uploader("Upload recipients file (CSV or Excel)", type=["csv", "txt", "xls", "xlsx"])
+uploaded_file = st.file_uploader(
+    "Upload recipients file (CSV or Excel)", 
+    type=["csv", "txt", "xls", "xlsx"]
+)
 
 recipients_df: Optional[pd.DataFrame] = None
 
 if uploaded_file:
-    # ... (keep your existing file reading + smart column detection code here)
-    pass  # I'll keep it short — use the file handling from previous response
+    try:
+        file_ext = uploaded_file.name.lower().split(".")[-1]
+        raw_data = uploaded_file.read()
 
-# ------------------- Main UI -------------------
+        if file_ext in ["csv", "txt"]:
+            recipients_df = pd.read_csv(io.StringIO(raw_data.decode("utf-8")))
+        else:
+            recipients_df = pd.read_excel(io.BytesIO(raw_data))
+
+        st.write("**Original Columns Detected:**", recipients_df.columns.tolist())
+
+        # Normalize column names
+        recipients_df.columns = [str(col).strip().lower() for col in recipients_df.columns]
+
+        # Smart detection
+        email_candidates = ["email", "emails", "email address", "email_address", 
+                           "mail", "to", "recipient", "recipients", "contact"]
+
+        email_col = None
+        for col in recipients_df.columns:
+            if any(cand in col for cand in email_candidates):
+                email_col = col
+                break
+
+        # Fallback: look for column with @ symbol
+        if not email_col and len(recipients_df) > 0:
+            for col in recipients_df.columns:
+                if recipients_df[col].astype(str).str.contains("@").any():
+                    email_col = col
+                    break
+
+        if email_col:
+            recipients_df = recipients_df.rename(columns={email_col: "email"})
+            st.success(f"✅ **Auto-detected** email column: `{email_col}`")
+        else:
+            st.error("❌ Could not auto-detect email column.")
+            st.info("Please select the correct column below:")
+
+            selected_col = st.selectbox(
+                "Select the column that contains email addresses:",
+                options=recipients_df.columns.tolist()
+            )
+            
+            if st.button("✅ Confirm Email Column", type="primary"):
+                recipients_df = recipients_df.rename(columns={selected_col: "email"})
+                st.success(f"✅ Using **{selected_col}** as email column")
+                st.rerun()
+
+        # Show preview
+        if "email" in recipients_df.columns:
+            st.success(f"✅ Loaded **{len(recipients_df)}** recipients")
+            st.dataframe(recipients_df.head(5), use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Failed to read file: {e}")
+
+# ------------------- Main Area -------------------
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    subject = st.text_input("📧 Email Subject", placeholder="Special Offer for You!")
+    subject = st.text_input("📧 Email Subject", placeholder="Special Offer Just for You!")
 
-    # AI Section (keep as before)
     use_ai = st.checkbox("✨ Use AI to generate email body", value=False)
-    # ... AI code ...
+    # ... (AI section can stay the same)
 
     if "body" not in st.session_state:
-        st.session_state.body = "Hello {name},\n\nThis is a personalized message.\n\nBest regards,"
+        st.session_state.body = "Hello {name},\n\nThis is a personalized email.\n\nBest regards,"
 
-    body = st.text_area("📝 Email Body", value=st.session_state.body, height=280, key="body")
+    body = st.text_area("📝 Email Body (use {name} for personalization)", 
+                       value=st.session_state.body, height=280, key="body")
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -82,17 +122,18 @@ with col1:
 
     if st.button("🚀 Send Emails", type="primary", use_container_width=True):
         if recipients_df is None or "email" not in recipients_df.columns:
-            st.error("Email column not configured.")
+            st.error("❌ Email column not configured. Please select it above.")
         elif not smtp_user or not smtp_password:
-            st.error("Please fill in SMTP credentials.")
+            st.error("SMTP credentials required.")
         elif not subject.strip() or not body.strip():
-            st.error("Subject and body are required.")
+            st.error("Subject and body required.")
         else:
+            # Filter valid emails
             valid_df = recipients_df[recipients_df["email"].astype(str).str.contains("@", na=False)].copy()
 
+            # ... (rest of sending code same as before)
             progress_bar = st.progress(0)
             status_text = st.empty()
-
             sent_count = 0
             failed = []
 
@@ -107,7 +148,6 @@ with col1:
                     for idx, row in valid_df.iterrows():
                         recipient = str(row["email"]).strip()
                         name = str(row.get("name", "")).strip() or "there"
-
                         personalized = body.replace("{name}", name)
 
                         msg = EmailMessage()
@@ -124,24 +164,19 @@ with col1:
                             failed.append((recipient, str(e)))
 
                         progress_bar.progress((idx + 1) / len(valid_df))
-                        status_text.text(f"Processing {idx+1}/{len(valid_df)} → {recipient}")
+                        status_text.text(f"Processing {idx+1}/{len(valid_df)}")
 
                         if delay > 0:
                             time.sleep(delay)
 
             except Exception as e:
                 st.error(f"SMTP Error: {e}")
-                if "535" in str(e):
-                    st.error("**Gmail rejected credentials** — Please use an **App Password** (see sidebar)")
 
-            st.success(f"✅ Sent **{sent_count}** emails successfully!")
+            st.success(f"✅ Sent: {sent_count} emails")
             if failed:
                 st.warning(f"Failed: {len(failed)}")
-                with st.expander("Failures"):
-                    for email, err in failed:
-                        st.write(f"{email}: {err}")
 
 with col2:
-    if recipients_df is not None:
-        st.metric("Total Recipients", len(recipients_df))
-        st.dataframe(recipients_df.head(6), use_container_width=True)
+    st.markdown("### Preview")
+    if recipients_df is not None and "email" in recipients_df.columns:
+        st.dataframe(recipients_df[["email"]].head(8), use_container_width=True)
