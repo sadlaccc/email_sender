@@ -3,165 +3,188 @@ import time
 import socket
 import smtplib
 from email.message import EmailMessage
-from typing import Optional
+from typing import Optional, List, Tuple
 
 import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="Bulk Email Sender", page_icon="✉️", layout="wide")
 
-st.title("✉️ Smart Bulk Email Sender")
-st.caption("AI Templates • Any SMTP Provider")
+# ====================== HEADER ======================
+st.title("✉️ Bulk Email Sender")
+st.markdown("**Professional • Reliable • Simple**")
 
 # ====================== SIDEBAR ======================
 with st.sidebar:
-    st.header("🔧 SMTP Configuration")
+    st.header("SMTP Configuration")
     
-    smtp_server = st.text_input(
-        "SMTP Server", 
-        value="smtp.intellinksea.com",
-        help="Common alternatives: mail.intellinksea.com, smtp.intellinksea.co.ke"
-    )
-    smtp_port = st.number_input("Port", value=587, min_value=1, max_value=65535)
+    smtp_server = st.text_input("SMTP Server", value="smtp.intellinksea.com", key="smtp_server")
+    smtp_port = st.number_input("Port", value=587, min_value=1, max_value=65535, key="smtp_port")
     
-    smtp_user = st.text_input("Email Address", placeholder="yourname@intellinksea.com")
-    smtp_password = st.text_input("Password", type="password")
+    smtp_user = st.text_input("Email Address", placeholder="you@intellinksea.com", key="smtp_user")
+    smtp_password = st.text_input("Password", type="password", key="smtp_password")
 
     st.markdown("---")
-    if st.button("🔍 Test Server Connection"):
-        try:
-            ip = socket.gethostbyname(smtp_server)
-            st.success(f"✅ Server resolved: {ip}")
-        except Exception as e:
-            st.error(f"❌ Cannot resolve: {smtp_server}")
-            st.info("Try these alternatives:\n• `mail.intellinksea.com`\n• `smtp.intellinksea.co.ke`")
+    st.info("**Tip**: Start with **Dry Run** enabled")
 
-# ====================== TABS ======================
-tab1, tab2, tab3 = st.tabs(["📋 Templates & AI", "📤 Recipients", "🚀 Send"])
+# ====================== MAIN LAYOUT ======================
+col_left, col_right = st.columns([2, 1])
 
-recipients_df: Optional[pd.DataFrame] = None
+# ====================== LEFT COLUMN - MAIN WORK AREA ======================
+with col_left:
+    # Recipients Section
+    st.subheader("📤 1. Upload Recipients")
+    uploaded_file = st.file_uploader("CSV or Excel file", type=["csv", "xlsx", "xls"], key="file_upload")
 
-# ====================== TAB 1: TEMPLATES + AI ======================
-with tab1:
-    st.subheader("Templates & AI Generator")
-
-    # Template Management
-    if "templates" not in st.session_state:
-        st.session_state.templates = {
-            "Welcome": "Hello {name},\n\nWelcome aboard! We're excited to work with you.",
-            "Follow-up": "Hello {name},\n\nJust following up on my previous email.",
-            "Promotion": "Hello {name},\n\nSpecial offer for you this month."
-        }
-
-    template_choice = st.selectbox("Load Template", options=list(st.session_state.templates.keys()))
-    if st.button("Load"):
-        st.session_state.body = st.session_state.templates[template_choice]
-
-    # AI Section
-    st.markdown("---")
-    st.subheader("✨ Generate with AI")
-    ai_prompt = st.text_area("What should the email say?", height=100)
-    
-    if st.button("Generate Email with AI"):
-        st.info("AI feature coming soon — OpenAI key needed in sidebar (optional)")
-
-    st.subheader("Email Content")
-    subject = st.text_input("Subject", "Important Update from Intellinksea")
-    body = st.text_area("Body (use {name} for personalization)", 
-                       value=st.session_state.get("body", "Hello {name},\n\n..."), height=250)
-
-# ====================== TAB 2: RECIPIENTS ======================
-with tab2:
-    uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx", "xls"])
+    recipients_df: Optional[pd.DataFrame] = None
 
     if uploaded_file:
         try:
-            if uploaded_file.name.endswith('.csv'):
+            if uploaded_file.name.lower().endswith('.csv'):
                 recipients_df = pd.read_csv(uploaded_file)
             else:
                 recipients_df = pd.read_excel(uploaded_file)
 
-            recipients_df.columns = [str(c).strip().lower() for c in recipients_df.columns]
+            recipients_df.columns = [str(col).strip().lower() for col in recipients_df.columns]
 
-            st.success(f"Loaded {len(recipients_df)} rows")
+            st.success(f"✅ Loaded **{len(recipients_df)}** records")
 
+            # Email Column Selection
             email_col = st.selectbox("Select Email Column", recipients_df.columns)
-            if st.button("Confirm Email Column"):
+            if st.button("✅ Confirm Email Column", type="primary", use_container_width=True):
                 recipients_df = recipients_df.rename(columns={email_col: "email"})
-                st.success("Email column confirmed!")
-                st.dataframe(recipients_df.head(6))
+                st.success(f"Email column set to: **{email_col}**")
+                st.dataframe(recipients_df.head(6), use_container_width=True)
 
         except Exception as e:
-            st.error(f"File error: {e}")
+            st.error(f"File Error: {e}")
 
-# ====================== TAB 3: SEND ======================
-with tab3:
-    st.subheader("Send Campaign")
-    dry_run = st.checkbox("Dry Run (Don't send real emails)", value=True)
+    # Email Content Section
+    st.markdown("---")
+    st.subheader("✉️ 2. Email Content")
 
-    if st.button("🚀 Start Sending", type="primary", use_container_width=True):
+    subject = st.text_input("Subject", placeholder="Quarterly Business Update - Q2 2026", key="subject")
+
+    body = st.text_area(
+        "Email Body — Use {name} for personalization", 
+        value=st.session_state.get("body", "Hello {name},\n\nPlease find the latest update attached.\n\nBest regards,\nTeam Intellinksea"),
+        height=280,
+        key="body"
+    )
+
+    # Send Section
+    st.markdown("---")
+    st.subheader("🚀 3. Send Campaign")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        dry_run = st.checkbox("Dry Run (Preview Only)", value=True)
+    with c2:
+        delay = st.slider("Delay between emails (seconds)", 0, 3, 1)
+
+    if st.button("🚀 SEND EMAILS NOW", type="primary", use_container_width=True):
         if not smtp_user or not smtp_password:
-            st.error("Please enter email and password in sidebar")
+            st.error("❌ Please enter SMTP credentials in the sidebar.")
         elif recipients_df is None or "email" not in recipients_df.columns:
-            st.error("Please upload recipients and confirm email column")
+            st.error("❌ Please upload file and confirm email column.")
+        elif not subject or not body:
+            st.error("❌ Subject and Body are required.")
         else:
-            server_host = smtp_server.strip()
+            valid_df = recipients_df[recipients_df["email"].astype(str).str.contains("@", na=False)].copy()
 
-            # DNS Test
-            try:
-                socket.gethostbyname(server_host)
-                st.success(f"✅ Server {server_host} is reachable")
-            except Exception:
-                st.error(f"❌ Cannot resolve **{server_host}**")
-                st.warning("This is likely an internal server. You may need to:")
-                st.markdown("""
-                1. Connect to company **VPN**
-                2. Use the correct internal hostname
-                3. Ask your IT team for the exact SMTP settings
-                """)
+            if len(valid_df) == 0:
+                st.error("No valid email addresses found.")
                 st.stop()
 
-            # Sending Logic
-            valid_df = recipients_df[recipients_df["email"].astype(str).str.contains("@")].copy()
+            # Progress
             progress_bar = st.progress(0)
-            status = st.empty()
+            status_text = st.empty()
 
-            sent = 0
-            failed = []
+            sent_count = 0
+            failed: List[Tuple[str, str]] = []
 
             try:
-                with smtplib.SMTP(server_host, smtp_port, timeout=30) as smtp:
+                with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as smtp:
                     smtp.ehlo()
-                    if smtp_port == 587:
+                    if smtp_port in (587, 25):
                         smtp.starttls()
                         smtp.ehlo()
                     smtp.login(smtp_user, smtp_password)
 
-                    for i, row in valid_df.iterrows():
+                    for idx, row in valid_df.iterrows():
                         recipient = str(row["email"]).strip()
                         name = str(row.get("name", "")).strip() or "there"
 
-                        text = body.replace("{name}", name)
+                        personalized = body.replace("{name}", name)
 
                         msg = EmailMessage()
                         msg["From"] = smtp_user
                         msg["To"] = recipient
                         msg["Subject"] = subject
-                        msg.set_content(text)
+                        msg.set_content(personalized)
 
                         try:
                             if not dry_run:
                                 smtp.send_message(msg)
-                            sent += 1
-                        except Exception as err:
-                            failed.append((recipient, str(err)))
+                            sent_count += 1
+                        except Exception as e:
+                            failed.append((recipient, str(e)))
 
-                        progress_bar.progress((i + 1) / len(valid_df))
-                        status.text(f"Sending {i+1}/{len(valid_df)} → {recipient}")
+                        progress_bar.progress((idx + 1) / len(valid_df))
+                        status_text.text(f"Sending {idx+1}/{len(valid_df)} → {recipient}")
+
+                        if delay > 0:
+                            time.sleep(delay)
 
             except Exception as e:
                 st.error(f"SMTP Error: {e}")
 
-            st.success(f"Done! Sent: {sent} emails")
+            # ====================== FINAL NOTIFICATION ======================
+            st.success(f"""
+            🎉 **Campaign Completed Successfully!**
+
+            **Sent**: {sent_count} emails  
+            **Total Recipients**: {len(valid_df)}  
+            **Failed**: {len(failed)} emails
+            """)
+
             if failed:
-                st.warning(f"Failed: {len(failed)}")
+                st.warning("Some emails failed to send.")
+                with st.expander("📋 View Failed Emails"):
+                    failed_df = pd.DataFrame(failed, columns=["Email", "Error"])
+                    st.dataframe(failed_df, use_container_width=True)
+                    st.download_button(
+                        "Download Failed Emails as CSV",
+                        failed_df.to_csv(index=False),
+                        file_name="failed_emails.csv",
+                        mime="text/csv"
+                    )
+
+            st.balloons()
+
+# ====================== RIGHT COLUMN - SUMMARY ======================
+with col_right:
+    st.subheader("Campaign Summary")
+    
+    if recipients_df is not None and "email" in recipients_df.columns:
+        total = len(recipients_df)
+        valid = len(recipients_df[recipients_df["email"].astype(str).str.contains("@", na=False)])
+        
+        st.metric("Total Records", total)
+        st.metric("Valid Emails", valid, delta=valid - total)
+        
+        st.markdown("### Preview")
+        st.dataframe(recipients_df[["email"]].head(8), use_container_width=True)
+    else:
+        st.info("Upload recipient file to see summary")
+
+    st.markdown("---")
+    st.markdown("### Instructions")
+    st.markdown("""
+    1. Upload your recipient list  
+    2. Confirm the email column  
+    3. Write your message  
+    4. Click **Send Emails**
+    """)
+
+    st.caption("Built for Intellinksea")
